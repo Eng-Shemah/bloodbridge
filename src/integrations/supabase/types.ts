@@ -14,7 +14,176 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      blood_requests: {
+        Row: {
+          blood_type_needed: string
+          created_at: string
+          id: string
+          location: string
+          requester_name: string
+          requester_type: string
+          status: string
+          units_needed: number
+          urgency: string
+        }
+        Insert: {
+          blood_type_needed: string
+          created_at?: string
+          id?: string
+          location: string
+          requester_name: string
+          requester_type: string
+          status?: string
+          units_needed?: number
+          urgency?: string
+        }
+        Update: {
+          blood_type_needed?: string
+          created_at?: string
+          id?: string
+          location?: string
+          requester_name?: string
+          requester_type?: string
+          status?: string
+          units_needed?: number
+          urgency?: string
+        }
+        Relationships: []
+      }
+      blood_stock: {
+        Row: {
+          blood_bank_name: string
+          blood_type: string
+          id: string
+          low_stock_threshold: number
+          units_available: number
+          updated_at: string
+        }
+        Insert: {
+          blood_bank_name: string
+          blood_type: string
+          id?: string
+          low_stock_threshold?: number
+          units_available?: number
+          updated_at?: string
+        }
+        Update: {
+          blood_bank_name?: string
+          blood_type?: string
+          id?: string
+          low_stock_threshold?: number
+          units_available?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      donor_matches: {
+        Row: {
+          donor_id: string | null
+          id: string
+          matched_at: string
+          request_id: string | null
+          status: string
+        }
+        Insert: {
+          donor_id?: string | null
+          id?: string
+          matched_at?: string
+          request_id?: string | null
+          status?: string
+        }
+        Update: {
+          donor_id?: string | null
+          id?: string
+          matched_at?: string
+          request_id?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "donor_matches_donor_id_fkey"
+            columns: ["donor_id"]
+            isOneToOne: false
+            referencedRelation: "donors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "donor_matches_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "blood_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      donors: {
+        Row: {
+          blood_type: string
+          created_at: string
+          full_name: string
+          id: string
+          is_available: boolean
+          last_donation_date: string | null
+          location: string
+          phone: string
+        }
+        Insert: {
+          blood_type: string
+          created_at?: string
+          full_name: string
+          id?: string
+          is_available?: boolean
+          last_donation_date?: string | null
+          location: string
+          phone: string
+        }
+        Update: {
+          blood_type?: string
+          created_at?: string
+          full_name?: string
+          id?: string
+          is_available?: boolean
+          last_donation_date?: string | null
+          location?: string
+          phone?: string
+        }
+        Relationships: []
+      }
+      stock_transactions: {
+        Row: {
+          change_type: string
+          created_at: string
+          id: string
+          note: string | null
+          stock_id: string | null
+          units: number
+        }
+        Insert: {
+          change_type: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          stock_id?: string | null
+          units: number
+        }
+        Update: {
+          change_type?: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          stock_id?: string | null
+          units?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_transactions_stock_id_fkey"
+            columns: ["stock_id"]
+            isOneToOne: false
+            referencedRelation: "blood_stock"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
