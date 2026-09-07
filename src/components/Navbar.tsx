@@ -22,11 +22,12 @@ export function Navbar() {
   }
 
   return (
-    <nav className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur-md supports-backdrop-filter:bg-background/60">
-      <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
-        <Link to="/" className="flex items-center gap-2 font-bold">
-          <Droplet className="float-y h-5 w-5 fill-primary text-primary" aria-hidden />
-          <span className="text-gradient-primary font-heading">BloodBridge</span>
+    <nav className="sticky top-0 z-20 border-b border-border/70 bg-background/70 backdrop-blur-xl supports-backdrop-filter:bg-background/50">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
+        <Link to="/" className="flex items-center gap-2">
+          <Droplet className="heartbeat h-5 w-5 fill-primary text-primary" aria-hidden />
+          <span className="text-gradient-primary font-heading text-2xl">BloodBridge</span>
+
           {isSupabaseConfigured && (
             <span
               title="Connected to Lovable Cloud - live updates enabled"
