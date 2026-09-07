@@ -1,0 +1,246 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { addDonor, deleteDonor, listDonors, setDonorAvailability } from "@/lib/dataStore";
+import { daysUntilEligible, isDonorEligible } from "@/lib/eligibility";
+import { BLOOD_TYPES, type BloodType, type Donor } from "@/types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+export const Route = createFileRoute("/donors")({
+  component: Donors,
+});
+
+const emptyForm = {
+  full_name: "",
+  blood_type: "O+" as BloodType,
+  phone: "",
+  location: "",
+};
+
+function Donors() {
+  const [donors, setDonors] = useState<Donor[]>([]);
+  const [form, setForm] = useState(emptyForm);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<BloodType | "all">("all");
+
+  function refresh() {
+    return listDonors().then(setDonors);
+  }
+
+  useEffect(() => {
+    refresh().finally(() => setLoading(false));
+  }, []);
+
+  const filteredDonors = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return donors.filter((d) => {
+      const matchesType = typeFilter === "all" || d.blood_type === typeFilter;
+      const matchesSearch =
+        !q ||
+        d.full_name.toLowerCase().includes(q) ||
+        d.phone.includes(q) ||
+        d.location.toLowerCase().includes(q);
+      return matchesType && matchesSearch;
+    });
+  }, [donors, search, typeFilter]);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!form.full_name || !form.phone || !form.location) return;
+    setSubmitting(true);
+    try {
+      await addDonor({
+        full_name: form.full_name,
+        blood_type: form.blood_type,
+        phone: form.phone,
+        location: form.location,
+        last_donation_date: null,
+        is_available: true,
+      });
+      const name = form.full_name;
+      setForm(emptyForm);
+      await refresh();
+      toast.success(`${name} registered as a donor`);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function toggleAvailability(donor: Donor) {
+    await setDonorAvailability(donor.id, !donor.is_available);
+    await refresh();
+  }
+
+  async function handleDelete(donor: Donor) {
+    if (!confirm(`Remove ${donor.full_name} from donors?`)) return;
+    await deleteDonor(donor.id);
+    await refresh();
+    toast(`${donor.full_name} removed`);
+  }
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-xl font-bold">Donors</h1>
+
+      <Card>
+        <CardContent className="p-4">
+          <form onSubmit={handleSubmit} className="grid gap-3 sm:grid-cols-2">
+            <div className="font-semibold sm:col-span-2">Register as a donor</div>
+            <Input
+              placeholder="Full name"
+              value={form.full_name}
+              onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+              required
+            />
+            <Select
+              value={form.blood_type}
+              onValueChange={(v) => setForm({ ...form, blood_type: v as BloodType })}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {BLOOD_TYPES.map((bt) => (
+                  <SelectItem key={bt} value={bt}>
+                    {bt}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              placeholder="Phone number"
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              required
+            />
+            <Input
+              placeholder="Location (e.g. Kigali - Kicukiro)"
+              value={form.location}
+              onChange={(e) => setForm({ ...form, location: e.target.value })}
+              required
+            />
+            <Button type="submit" disabled={submitting} className="sm:col-span-2">
+              {submitting ? "Registering…" : "Register donor"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          className="min-w-[180px] flex-1"
+          placeholder="Search by name, phone, or location…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as BloodType | "all")}>
+          <SelectTrigger className="w-[160px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All blood types</SelectItem>
+            {BLOOD_TYPES.map((bt) => (
+              <SelectItem key={bt} value={bt}>
+                {bt}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {loading ? (
+        <p className="text-muted-foreground">Loading donors…</p>
+      ) : (
+        <Card>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>Location</TableHead>
+                <TableHead>Eligibility</TableHead>
+                <TableHead>Available</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredDonors.map((d) => {
+                const eligible = isDonorEligible(d);
+                const waitDays = daysUntilEligible(d);
+                return (
+                  <TableRow key={d.id}>
+                    <TableCell>{d.full_name}</TableCell>
+                    <TableCell className="font-semibold text-primary">{d.blood_type}</TableCell>
+                    <TableCell>{d.phone}</TableCell>
+                    <TableCell>{d.location}</TableCell>
+                    <TableCell>
+                      {eligible ? (
+                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400">
+                          Eligible
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-400">
+                          Wait {waitDays}d
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <button onClick={() => toggleAvailability(d)}>
+                        <Badge
+                          variant={d.is_available ? "default" : "secondary"}
+                          className="cursor-pointer"
+                        >
+                          {d.is_available ? "Available" : "Unavailable"}
+                        </Badge>
+                      </button>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() => handleDelete(d)}
+                      >
+                        Remove
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {filteredDonors.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
+                    {donors.length === 0
+                      ? "No donors registered yet."
+                      : "No donors match your search."}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+    </div>
+  );
+}

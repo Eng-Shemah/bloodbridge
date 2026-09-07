@@ -20,6 +20,9 @@ dist-ssr
 .wrangler/
 .dev.vars
 
+# This project uses bun.lock (Lovable's canonical lockfile) - don't commit npm's
+package-lock.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
