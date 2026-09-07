@@ -1,4 +1,5 @@
-import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { supabase as typedSupabase, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { getCompatibleDonorTypes } from "@/lib/bloodCompatibility";
 import { getDistanceKm } from "@/lib/locations";
 import type {
@@ -17,10 +18,19 @@ import type {
  *
  * Until Lovable Cloud (Supabase) is enabled, every function here reads/writes
  * localStorage instead, seeded with sample data so the app is fully usable
- * during development. Once VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are
- * set, the same functions talk to Postgres — pages never need to know which
- * backend is active.
+ * during development. Once Cloud is on, the same functions talk to Postgres —
+ * pages never need to know which backend is active.
+ *
+ * `supabase` is cast away from its generated `Database` typing (currently an
+ * empty schema — src/integrations/supabase/types.ts regenerates once the
+ * migration in supabase/migrations/ actually runs against the real project)
+ * so `.from("donors")` etc. type-check today instead of only after that.
+ * Every Supabase call is also wrapped in try/catch, falling back to the same
+ * localStorage path used before Cloud was enabled — so if the migration
+ * hasn't been run yet (tables don't exist), the app keeps working on mock
+ * data instead of erroring, and starts using Postgres the moment it exists.
  */
+const supabase = typedSupabase as unknown as SupabaseClient;
 
 const LS_DONORS = "bloodbridge_donors";
 const LS_REQUESTS = "bloodbridge_requests";
@@ -48,6 +58,30 @@ function readLS<T>(key: string, seed: T): T {
 function writeLS<T>(key: string, value: T): void {
   if (typeof localStorage === "undefined") return;
   localStorage.setItem(key, JSON.stringify(value));
+}
+
+/**
+ * Runs `fn` against Supabase when Cloud is configured; on any failure (most
+ * likely the migration hasn't been run yet, so the table doesn't exist),
+ * warns once to the console and falls through to `fallback` instead of
+ * breaking the page.
+ */
+async function withSupabaseFallback<T>(
+  fn: () => Promise<T>,
+  fallback: () => T | Promise<T>,
+): Promise<T> {
+  if (isSupabaseConfigured) {
+    try {
+      return await fn();
+    } catch (err) {
+      console.warn(
+        "[BloodBridge] Supabase call failed, falling back to local data. " +
+          "Has the migration in supabase/migrations/ been run yet?",
+        err,
+      );
+    }
+  }
+  return fallback();
 }
 
 function seedDonors(): Donor[] {
@@ -101,103 +135,123 @@ function seedStock(): StockEntry[] {
 // ---------- Donors ----------
 
 export async function listDonors(): Promise<Donor[]> {
-  if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase
-      .from("donors")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (error) throw error;
-    return data as Donor[];
-  }
-  return readLS(LS_DONORS, seedDonors());
+  return withSupabaseFallback(
+    async () => {
+      const { data, error } = await supabase
+        .from("donors")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data as Donor[];
+    },
+    () => readLS(LS_DONORS, seedDonors()),
+  );
 }
 
 export async function addDonor(input: Omit<Donor, "id" | "created_at">): Promise<Donor> {
-  if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase.from("donors").insert(input).select().single();
-    if (error) throw error;
-    return data as Donor;
-  }
-  const donors = readLS(LS_DONORS, seedDonors());
-  const donor: Donor = { ...input, id: uid(), created_at: new Date().toISOString() };
-  const updated = [donor, ...donors];
-  writeLS(LS_DONORS, updated);
-  return donor;
+  return withSupabaseFallback(
+    async () => {
+      const { data, error } = await supabase.from("donors").insert(input).select().single();
+      if (error) throw error;
+      return data as Donor;
+    },
+    () => {
+      const donors = readLS(LS_DONORS, seedDonors());
+      const donor: Donor = { ...input, id: uid(), created_at: new Date().toISOString() };
+      writeLS(LS_DONORS, [donor, ...donors]);
+      return donor;
+    },
+  );
 }
 
 export async function setDonorAvailability(id: string, is_available: boolean): Promise<void> {
-  if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.from("donors").update({ is_available }).eq("id", id);
-    if (error) throw error;
-    return;
-  }
-  const donors = readLS(LS_DONORS, seedDonors());
-  writeLS(
-    LS_DONORS,
-    donors.map((d) => (d.id === id ? { ...d, is_available } : d)),
+  return withSupabaseFallback(
+    async () => {
+      const { error } = await supabase.from("donors").update({ is_available }).eq("id", id);
+      if (error) throw error;
+    },
+    () => {
+      const donors = readLS(LS_DONORS, seedDonors());
+      writeLS(
+        LS_DONORS,
+        donors.map((d) => (d.id === id ? { ...d, is_available } : d)),
+      );
+    },
   );
 }
 
 export async function deleteDonor(id: string): Promise<void> {
-  if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.from("donors").delete().eq("id", id);
-    if (error) throw error;
-    return;
-  }
-  const donors = readLS(LS_DONORS, seedDonors());
-  writeLS(
-    LS_DONORS,
-    donors.filter((d) => d.id !== id),
+  return withSupabaseFallback(
+    async () => {
+      const { error } = await supabase.from("donors").delete().eq("id", id);
+      if (error) throw error;
+    },
+    () => {
+      const donors = readLS(LS_DONORS, seedDonors());
+      writeLS(
+        LS_DONORS,
+        donors.filter((d) => d.id !== id),
+      );
+    },
   );
 }
 
 // ---------- Requests ----------
 
 export async function listRequests(): Promise<BloodRequest[]> {
-  if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase
-      .from("blood_requests")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (error) throw error;
-    return data as BloodRequest[];
-  }
-  return readLS(LS_REQUESTS, [] as BloodRequest[]);
+  return withSupabaseFallback(
+    async () => {
+      const { data, error } = await supabase
+        .from("blood_requests")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data as BloodRequest[];
+    },
+    () => readLS(LS_REQUESTS, [] as BloodRequest[]),
+  );
 }
 
 export async function addRequest(
   input: Omit<BloodRequest, "id" | "created_at" | "status">,
 ): Promise<BloodRequest> {
-  if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase
-      .from("blood_requests")
-      .insert({ ...input, status: "open" })
-      .select()
-      .single();
-    if (error) throw error;
-    return data as BloodRequest;
-  }
-  const requests = readLS(LS_REQUESTS, [] as BloodRequest[]);
-  const request: BloodRequest = {
-    ...input,
-    id: uid(),
-    status: "open",
-    created_at: new Date().toISOString(),
-  };
-  writeLS(LS_REQUESTS, [request, ...requests]);
-  return request;
+  return withSupabaseFallback(
+    async () => {
+      const { data, error } = await supabase
+        .from("blood_requests")
+        .insert({ ...input, status: "open" })
+        .select()
+        .single();
+      if (error) throw error;
+      return data as BloodRequest;
+    },
+    () => {
+      const requests = readLS(LS_REQUESTS, [] as BloodRequest[]);
+      const request: BloodRequest = {
+        ...input,
+        id: uid(),
+        status: "open",
+        created_at: new Date().toISOString(),
+      };
+      writeLS(LS_REQUESTS, [request, ...requests]);
+      return request;
+    },
+  );
 }
 
 export async function setRequestStatus(id: string, status: RequestStatus): Promise<void> {
-  if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.from("blood_requests").update({ status }).eq("id", id);
-    if (error) throw error;
-    return;
-  }
-  const requests = readLS(LS_REQUESTS, [] as BloodRequest[]);
-  writeLS(
-    LS_REQUESTS,
-    requests.map((r) => (r.id === id ? { ...r, status } : r)),
+  return withSupabaseFallback(
+    async () => {
+      const { error } = await supabase.from("blood_requests").update({ status }).eq("id", id);
+      if (error) throw error;
+    },
+    () => {
+      const requests = readLS(LS_REQUESTS, [] as BloodRequest[]);
+      writeLS(
+        LS_REQUESTS,
+        requests.map((r) => (r.id === id ? { ...r, status } : r)),
+      );
+    },
   );
 }
 
@@ -223,15 +277,17 @@ export async function findMatchingDonors(request: BloodRequest): Promise<Matched
 // ---------- Stock ----------
 
 export async function listStock(): Promise<StockEntry[]> {
-  if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase
-      .from("blood_stock")
-      .select("*")
-      .order("blood_type", { ascending: true });
-    if (error) throw error;
-    return data as StockEntry[];
-  }
-  return readLS(LS_STOCK, seedStock());
+  return withSupabaseFallback(
+    async () => {
+      const { data, error } = await supabase
+        .from("blood_stock")
+        .select("*")
+        .order("blood_type", { ascending: true });
+      if (error) throw error;
+      return data as StockEntry[];
+    },
+    () => readLS(LS_STOCK, seedStock()),
+  );
 }
 
 /**
@@ -246,71 +302,76 @@ export async function adjustStock(
   changeType: StockChangeType = "adjustment",
   note?: string,
 ): Promise<StockEntry> {
-  if (isSupabaseConfigured && supabase) {
-    const { data: existing, error: fetchError } = await supabase
-      .from("blood_stock")
-      .select("*")
-      .eq("blood_type", bloodType)
-      .single();
-    if (fetchError) throw fetchError;
-    const newUnits = Math.max(0, existing.units_available + unitsDelta);
-    const { data, error } = await supabase
-      .from("blood_stock")
-      .update({ units_available: newUnits, updated_at: new Date().toISOString() })
-      .eq("id", existing.id)
-      .select()
-      .single();
-    if (error) throw error;
-    await supabase.from("stock_transactions").insert({
-      stock_id: existing.id,
-      change_type: changeType,
-      units: unitsDelta,
-      note: note ?? null,
-    });
-    return data as StockEntry;
-  }
-  const stock = readLS(LS_STOCK, seedStock());
-  let updatedEntry: StockEntry | undefined;
-  const updated = stock.map((s) => {
-    if (s.blood_type === bloodType) {
-      updatedEntry = {
-        ...s,
-        units_available: Math.max(0, s.units_available + unitsDelta),
-        updated_at: new Date().toISOString(),
+  return withSupabaseFallback(
+    async () => {
+      const { data: existing, error: fetchError } = await supabase
+        .from("blood_stock")
+        .select("*")
+        .eq("blood_type", bloodType)
+        .single();
+      if (fetchError) throw fetchError;
+      const newUnits = Math.max(0, existing.units_available + unitsDelta);
+      const { data, error } = await supabase
+        .from("blood_stock")
+        .update({ units_available: newUnits, updated_at: new Date().toISOString() })
+        .eq("id", existing.id)
+        .select()
+        .single();
+      if (error) throw error;
+      await supabase.from("stock_transactions").insert({
+        stock_id: existing.id,
+        change_type: changeType,
+        units: unitsDelta,
+        note: note ?? null,
+      });
+      return data as StockEntry;
+    },
+    () => {
+      const stock = readLS(LS_STOCK, seedStock());
+      let updatedEntry: StockEntry | undefined;
+      const updated = stock.map((s) => {
+        if (s.blood_type === bloodType) {
+          updatedEntry = {
+            ...s,
+            units_available: Math.max(0, s.units_available + unitsDelta),
+            updated_at: new Date().toISOString(),
+          };
+          return updatedEntry;
+        }
+        return s;
+      });
+      writeLS(LS_STOCK, updated);
+
+      const transactions = readLS(LS_STOCK_TX, [] as StockTransaction[]);
+      const tx: StockTransaction = {
+        id: uid(),
+        blood_type: bloodType,
+        change_type: changeType,
+        units: unitsDelta,
+        note: note ?? null,
+        created_at: new Date().toISOString(),
       };
-      return updatedEntry;
-    }
-    return s;
-  });
-  writeLS(LS_STOCK, updated);
+      writeLS(LS_STOCK_TX, [tx, ...transactions]);
 
-  const transactions = readLS(LS_STOCK_TX, [] as StockTransaction[]);
-  const tx: StockTransaction = {
-    id: uid(),
-    blood_type: bloodType,
-    change_type: changeType,
-    units: unitsDelta,
-    note: note ?? null,
-    created_at: new Date().toISOString(),
-  };
-  writeLS(LS_STOCK_TX, [tx, ...transactions]);
-
-  return updatedEntry as StockEntry;
+      return updatedEntry as StockEntry;
+    },
+  );
 }
 
 /** Most recent stock movements first, for the Stock page's activity log. */
 export async function listStockTransactions(limit = 20): Promise<StockTransaction[]> {
-  if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase
-      .from("stock_transactions")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(limit);
-    if (error) throw error;
-    return data as StockTransaction[];
-  }
-  const transactions = readLS(LS_STOCK_TX, [] as StockTransaction[]);
-  return transactions.slice(0, limit);
+  return withSupabaseFallback(
+    async () => {
+      const { data, error } = await supabase
+        .from("stock_transactions")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return data as StockTransaction[];
+    },
+    () => readLS(LS_STOCK_TX, [] as StockTransaction[]).slice(0, limit),
+  );
 }
 
 /**
@@ -320,19 +381,22 @@ export async function listStockTransactions(limit = 20): Promise<StockTransactio
 export async function recordDonation(donor: Donor, units = 1): Promise<void> {
   const today = new Date().toISOString().slice(0, 10);
 
-  if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase
-      .from("donors")
-      .update({ last_donation_date: today })
-      .eq("id", donor.id);
-    if (error) throw error;
-  } else {
-    const donors = readLS(LS_DONORS, seedDonors());
-    writeLS(
-      LS_DONORS,
-      donors.map((d) => (d.id === donor.id ? { ...d, last_donation_date: today } : d)),
-    );
-  }
+  await withSupabaseFallback(
+    async () => {
+      const { error } = await supabase
+        .from("donors")
+        .update({ last_donation_date: today })
+        .eq("id", donor.id);
+      if (error) throw error;
+    },
+    () => {
+      const donors = readLS(LS_DONORS, seedDonors());
+      writeLS(
+        LS_DONORS,
+        donors.map((d) => (d.id === donor.id ? { ...d, last_donation_date: today } : d)),
+      );
+    },
+  );
 
   await adjustStock(donor.blood_type, units, "donation_in", `Donation by ${donor.full_name}`);
 }

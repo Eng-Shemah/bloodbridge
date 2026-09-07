@@ -1,12 +1,11 @@
-import { createClient } from "@supabase/supabase-js";
+// Lovable Cloud generates its own typed Supabase client (env-aware for both
+// client and SSR, with auth storage wired for the Lovable preview iframe) at
+// src/integrations/supabase/client.ts — re-exporting it here instead of
+// hand-rolling a second client instance keeps auth/session state consistent.
+export { supabase } from "@/integrations/supabase/client";
 
-const url = import.meta.env["VITE_SUPABASE_URL"] as string | undefined;
-const anonKey = import.meta.env["VITE_SUPABASE_ANON_KEY"] as string | undefined;
-
-export const isSupabaseConfigured = Boolean(url && anonKey);
-
-// When VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY aren't set yet (Lovable Cloud not
-// enabled), this client is never used — dataStore.ts falls back to localStorage.
-export const supabase = isSupabaseConfigured
-  ? createClient(url as string, anonKey as string)
-  : null;
+// Lovable Cloud's env vars use "PUBLISHABLE_KEY" (their newer opaque API key
+// format), not the older "ANON_KEY" naming.
+export const isSupabaseConfigured = Boolean(
+  import.meta.env["VITE_SUPABASE_URL"] && import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"],
+);
