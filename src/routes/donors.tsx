@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import {
   Select,
   SelectContent,
@@ -46,6 +47,7 @@ function Donors() {
   const [form, setForm] = useState(emptyForm);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<BloodType | "all">("all");
+  const [pendingDelete, setPendingDelete] = useState<Donor | null>(null);
 
   const filteredDonors = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -83,19 +85,24 @@ function Donors() {
     setAvailabilityMutation.mutate({ id: donor.id, isAvailable: !donor.is_available });
   }
 
-  async function handleDelete(donor: Donor) {
-    if (!confirm(`Remove ${donor.full_name} from donors?`)) return;
-    await deleteDonorMutation.mutateAsync(donor.id);
-    toast(`${donor.full_name} removed`);
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    const name = pendingDelete.full_name;
+    await deleteDonorMutation.mutateAsync(pendingDelete.id);
+    setPendingDelete(null);
+    toast(`${name} removed`);
   }
 
   const submitting = addDonorMutation.isPending;
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold">Donors</h1>
+      <h1 className="stagger-in font-heading text-xl font-bold">Donors</h1>
 
-      <Card>
+      <Card
+        className="stagger-in hover-lift"
+        style={{ "--stagger-delay": "60ms" } as React.CSSProperties}
+      >
         <CardContent className="p-4">
           <form onSubmit={handleSubmit} className="grid gap-3 sm:grid-cols-2">
             <div className="font-semibold sm:col-span-2">Register as a donor</div>
@@ -132,14 +139,21 @@ function Donors() {
               onChange={(e) => setForm({ ...form, location: e.target.value })}
               required
             />
-            <Button type="submit" disabled={submitting} className="sm:col-span-2">
+            <Button
+              type="submit"
+              disabled={submitting}
+              className="transition-transform sm:col-span-2 active:scale-[0.98]"
+            >
               {submitting ? "Registering…" : "Register donor"}
             </Button>
           </form>
         </CardContent>
       </Card>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div
+        className="stagger-in flex flex-wrap items-center gap-2"
+        style={{ "--stagger-delay": "110ms" } as React.CSSProperties}
+      >
         <Input
           className="min-w-[180px] flex-1"
           placeholder="Search by name, phone, or location…"
@@ -161,7 +175,7 @@ function Donors() {
         </Select>
       </div>
 
-      <Card>
+      <Card className="stagger-in" style={{ "--stagger-delay": "160ms" } as React.CSSProperties}>
         <Table>
           <TableHeader>
             <TableRow>
@@ -191,8 +205,8 @@ function Donors() {
                   const eligible = isDonorEligible(d);
                   const waitDays = daysUntilEligible(d);
                   return (
-                    <TableRow key={d.id}>
-                      <TableCell>{d.full_name}</TableCell>
+                    <TableRow key={d.id} className="transition-colors">
+                      <TableCell className="font-medium">{d.full_name}</TableCell>
                       <TableCell className="font-semibold text-primary">{d.blood_type}</TableCell>
                       <TableCell>{d.phone}</TableCell>
                       <TableCell>{d.location}</TableCell>
@@ -211,7 +225,7 @@ function Donors() {
                         <button onClick={() => toggleAvailability(d)}>
                           <Badge
                             variant={d.is_available ? "default" : "secondary"}
-                            className="cursor-pointer"
+                            className="cursor-pointer transition-transform active:scale-95"
                           >
                             {d.is_available ? "Available" : "Unavailable"}
                           </Badge>
@@ -222,7 +236,7 @@ function Donors() {
                           variant="ghost"
                           size="sm"
                           className="text-muted-foreground hover:text-destructive"
-                          onClick={() => handleDelete(d)}
+                          onClick={() => setPendingDelete(d)}
                         >
                           Remove
                         </Button>
@@ -247,6 +261,20 @@ function Donors() {
           </TableBody>
         </Table>
       </Card>
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title="Remove donor?"
+        description={
+          pendingDelete
+            ? `${pendingDelete.full_name} will be removed from the donor list. This can't be undone.`
+            : ""
+        }
+        confirmLabel="Remove"
+        destructive
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

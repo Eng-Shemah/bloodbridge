@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StockChart } from "@/components/StockChart";
 import {
   Table,
   TableBody,
@@ -45,9 +46,23 @@ function Stock() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold">Blood Stock</h1>
+      <h1 className="stagger-in font-heading text-xl font-bold">Blood Stock</h1>
 
-      <Card>
+      {!loadingStock && stock.length > 0 && (
+        <Card
+          className="stagger-in hover-lift"
+          style={{ "--stagger-delay": "40ms" } as React.CSSProperties}
+        >
+          <div className="p-4 pb-0 text-sm font-semibold text-muted-foreground">
+            Units by blood type
+          </div>
+          <div className="p-4">
+            <StockChart stock={stock} />
+          </div>
+        </Card>
+      )}
+
+      <Card className="stagger-in" style={{ "--stagger-delay": "90ms" } as React.CSSProperties}>
         <Table>
           <TableHeader>
             <TableRow>
@@ -72,10 +87,12 @@ function Stock() {
               : stock.map((s) => {
                   const isLow = s.units_available <= s.low_stock_threshold;
                   return (
-                    <TableRow key={s.id}>
+                    <TableRow key={s.id} className={isLow ? "bg-destructive/5" : undefined}>
                       <TableCell>{s.blood_bank_name}</TableCell>
                       <TableCell className="font-semibold text-primary">{s.blood_type}</TableCell>
-                      <TableCell>{s.units_available}</TableCell>
+                      <TableCell className="font-heading tabular-nums">
+                        {s.units_available}
+                      </TableCell>
                       <TableCell>
                         {isLow ? (
                           <Badge className="bg-red-100 text-red-700 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-400">
@@ -91,7 +108,7 @@ function Stock() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="border-green-500 text-green-600 hover:bg-green-50 dark:hover:bg-green-950"
+                          className="border-green-500 text-green-600 transition-transform hover:bg-green-50 active:scale-95 dark:hover:bg-green-950"
                           onClick={() => handleAdjust(s.blood_type, 1)}
                           title="Log a donation in"
                         >
@@ -101,6 +118,7 @@ function Stock() {
                           size="sm"
                           variant="outline"
                           disabled={s.units_available <= 0}
+                          className="transition-transform active:scale-95"
                           onClick={() => handleAdjust(s.blood_type, -1)}
                           title="Log usage out"
                         >
@@ -114,7 +132,7 @@ function Stock() {
         </Table>
       </Card>
 
-      <div>
+      <div className="stagger-in" style={{ "--stagger-delay": "140ms" } as React.CSSProperties}>
         <h2 className="mb-2 flex items-center gap-2 font-semibold">
           <Activity className="h-4 w-4 text-muted-foreground" /> Recent activity
         </h2>

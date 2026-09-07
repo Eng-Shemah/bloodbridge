@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -46,7 +47,8 @@ const urgencyClass: Record<Urgency, string> = {
   low: "bg-muted text-muted-foreground hover:bg-muted",
   medium: "bg-blue-100 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/40 dark:text-blue-400",
   high: "bg-amber-100 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-400",
-  critical: "bg-red-100 text-red-700 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-400",
+  critical:
+    "animate-pulse bg-red-100 text-red-700 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-400",
 };
 
 const STATUS_FILTERS: (RequestStatus | "all")[] = ["all", "open", "fulfilled", "cancelled"];
@@ -61,6 +63,7 @@ function Requests() {
   const [matches, setMatches] = useState<Record<string, MatchedDonor[]>>({});
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<RequestStatus | "all">("all");
+  const [pendingCancel, setPendingCancel] = useState<string | null>(null);
 
   const filteredRequests = useMemo(
     () => (statusFilter === "all" ? requests : requests.filter((r) => r.status === statusFilter)),
@@ -91,12 +94,13 @@ function Requests() {
     );
   }
 
-  function handleCancel(id: string) {
-    if (!confirm("Cancel this request?")) return;
+  function confirmCancel() {
+    if (!pendingCancel) return;
     setStatusMutation.mutate(
-      { id, status: "cancelled" },
+      { id: pendingCancel, status: "cancelled" },
       { onSuccess: () => toast("Request cancelled") },
     );
+    setPendingCancel(null);
   }
 
   async function handleConfirmDonation(request: BloodRequest, donor: MatchedDonor) {
@@ -114,9 +118,12 @@ function Requests() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold">Blood Requests</h1>
+      <h1 className="stagger-in font-heading text-xl font-bold">Blood Requests</h1>
 
-      <Card>
+      <Card
+        className="stagger-in hover-lift"
+        style={{ "--stagger-delay": "60ms" } as React.CSSProperties}
+      >
         <CardContent className="p-4">
           <form onSubmit={handleSubmit} className="grid gap-3 sm:grid-cols-2">
             <div className="font-semibold sm:col-span-2">Post a request</div>
@@ -184,22 +191,31 @@ function Requests() {
               onChange={(e) => setForm({ ...form, location: e.target.value })}
               required
             />
-            <Button type="submit" disabled={submitting} className="sm:col-span-2">
+            <Button
+              type="submit"
+              disabled={submitting}
+              className="transition-transform sm:col-span-2 active:scale-[0.98]"
+            >
               {submitting ? "Posting…" : "Post request"}
             </Button>
           </form>
         </CardContent>
       </Card>
 
-      <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as RequestStatus | "all")}>
-        <TabsList>
-          {STATUS_FILTERS.map((s) => (
-            <TabsTrigger key={s} value={s} className="capitalize">
-              {s}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
+      <div className="stagger-in" style={{ "--stagger-delay": "110ms" } as React.CSSProperties}>
+        <Tabs
+          value={statusFilter}
+          onValueChange={(v) => setStatusFilter(v as RequestStatus | "all")}
+        >
+          <TabsList>
+            {STATUS_FILTERS.map((s) => (
+              <TabsTrigger key={s} value={s} className="capitalize">
+                {s}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      </div>
 
       {loading ? (
         <div className="space-y-3">
@@ -214,12 +230,18 @@ function Requests() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredRequests.map((r) => (
-            <Card key={r.id}>
+          {filteredRequests.map((r, i) => (
+            <Card
+              key={r.id}
+              className="stagger-in hover-lift"
+              style={{ "--stagger-delay": `${160 + Math.min(i, 6) * 40}ms` } as React.CSSProperties}
+            >
               <CardContent className="p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <span className="font-semibold text-primary">{r.blood_type_needed}</span>{" "}
+                    <span className="font-heading font-semibold text-primary">
+                      {r.blood_type_needed}
+                    </span>{" "}
                     <span>
                       · {r.units_needed} unit(s) for {r.requester_name} ({r.requester_type})
                     </span>
@@ -244,7 +266,7 @@ function Requests() {
                         variant="ghost"
                         size="sm"
                         className="text-muted-foreground hover:text-destructive"
-                        onClick={() => handleCancel(r.id)}
+                        onClick={() => setPendingCancel(r.id)}
                       >
                         Cancel
                       </Button>
@@ -265,7 +287,7 @@ function Requests() {
                           return (
                             <li
                               key={d.id}
-                              className="flex flex-wrap items-center justify-between gap-2"
+                              className="stagger-in flex flex-wrap items-center justify-between gap-2"
                             >
                               <span>
                                 {d.full_name} — <span className="font-medium">{d.blood_type}</span>
@@ -305,6 +327,16 @@ function Requests() {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={pendingCancel !== null}
+        onOpenChange={(open) => !open && setPendingCancel(null)}
+        title="Cancel this request?"
+        description="The request will be marked as cancelled. You can't undo this."
+        confirmLabel="Cancel request"
+        destructive
+        onConfirm={confirmCancel}
+      />
     </div>
   );
 }
