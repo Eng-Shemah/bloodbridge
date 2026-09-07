@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { Droplet } from "lucide-react";
 
 const navItems = [
   { to: "/", label: "Dashboard" },
@@ -12,7 +13,7 @@ export function Navbar() {
     <nav className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
         <Link to="/" className="flex items-center gap-2 font-bold text-primary">
-          <span aria-hidden>🩸</span>
+          <Droplet className="h-5 w-5 fill-primary" aria-hidden />
           <span>BloodBridge</span>
         </Link>
         <div className="flex gap-1">

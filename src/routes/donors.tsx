@@ -1,13 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { addDonor, deleteDonor, listDonors, setDonorAvailability } from "@/lib/dataStore";
+import { Users } from "lucide-react";
+import { useAddDonor, useDeleteDonor, useDonors, useSetDonorAvailability } from "@/hooks/useDonors";
 import { daysUntilEligible, isDonorEligible } from "@/lib/eligibility";
 import { BLOOD_TYPES, type BloodType, type Donor } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -36,20 +38,14 @@ const emptyForm = {
 };
 
 function Donors() {
-  const [donors, setDonors] = useState<Donor[]>([]);
+  const { data: donors = [], isLoading: loading } = useDonors();
+  const addDonorMutation = useAddDonor();
+  const setAvailabilityMutation = useSetDonorAvailability();
+  const deleteDonorMutation = useDeleteDonor();
+
   const [form, setForm] = useState(emptyForm);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<BloodType | "all">("all");
-
-  function refresh() {
-    return listDonors().then(setDonors);
-  }
-
-  useEffect(() => {
-    refresh().finally(() => setLoading(false));
-  }, []);
 
   const filteredDonors = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -67,9 +63,8 @@ function Donors() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!form.full_name || !form.phone || !form.location) return;
-    setSubmitting(true);
     try {
-      await addDonor({
+      await addDonorMutation.mutateAsync({
         full_name: form.full_name,
         blood_type: form.blood_type,
         phone: form.phone,
@@ -77,26 +72,24 @@ function Donors() {
         last_donation_date: null,
         is_available: true,
       });
-      const name = form.full_name;
+      toast.success(`${form.full_name} registered as a donor`);
       setForm(emptyForm);
-      await refresh();
-      toast.success(`${name} registered as a donor`);
-    } finally {
-      setSubmitting(false);
+    } catch {
+      toast.error("Couldn't register donor — try again");
     }
   }
 
-  async function toggleAvailability(donor: Donor) {
-    await setDonorAvailability(donor.id, !donor.is_available);
-    await refresh();
+  function toggleAvailability(donor: Donor) {
+    setAvailabilityMutation.mutate({ id: donor.id, isAvailable: !donor.is_available });
   }
 
   async function handleDelete(donor: Donor) {
     if (!confirm(`Remove ${donor.full_name} from donors?`)) return;
-    await deleteDonor(donor.id);
-    await refresh();
+    await deleteDonorMutation.mutateAsync(donor.id);
     toast(`${donor.full_name} removed`);
   }
+
+  const submitting = addDonorMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -168,79 +161,92 @@ function Donors() {
         </Select>
       </div>
 
-      {loading ? (
-        <p className="text-muted-foreground">Loading donors…</p>
-      ) : (
-        <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Eligibility</TableHead>
-                <TableHead>Available</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredDonors.map((d) => {
-                const eligible = isDonorEligible(d);
-                const waitDays = daysUntilEligible(d);
-                return (
-                  <TableRow key={d.id}>
-                    <TableCell>{d.full_name}</TableCell>
-                    <TableCell className="font-semibold text-primary">{d.blood_type}</TableCell>
-                    <TableCell>{d.phone}</TableCell>
-                    <TableCell>{d.location}</TableCell>
-                    <TableCell>
-                      {eligible ? (
-                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400">
-                          Eligible
-                        </Badge>
-                      ) : (
-                        <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-400">
-                          Wait {waitDays}d
-                        </Badge>
-                      )}
+      <Card>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Location</TableHead>
+              <TableHead>Eligibility</TableHead>
+              <TableHead>Available</TableHead>
+              <TableHead></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <TableRow key={i}>
+                  {Array.from({ length: 7 }).map((__, j) => (
+                    <TableCell key={j}>
+                      <Skeleton className="h-4 w-full max-w-24" />
                     </TableCell>
-                    <TableCell>
-                      <button onClick={() => toggleAvailability(d)}>
-                        <Badge
-                          variant={d.is_available ? "default" : "secondary"}
-                          className="cursor-pointer"
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <>
+                {filteredDonors.map((d) => {
+                  const eligible = isDonorEligible(d);
+                  const waitDays = daysUntilEligible(d);
+                  return (
+                    <TableRow key={d.id}>
+                      <TableCell>{d.full_name}</TableCell>
+                      <TableCell className="font-semibold text-primary">{d.blood_type}</TableCell>
+                      <TableCell>{d.phone}</TableCell>
+                      <TableCell>{d.location}</TableCell>
+                      <TableCell>
+                        {eligible ? (
+                          <Badge className="bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900/40 dark:text-green-400">
+                            Eligible
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-400">
+                            Wait {waitDays}d
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <button onClick={() => toggleAvailability(d)}>
+                          <Badge
+                            variant={d.is_available ? "default" : "secondary"}
+                            className="cursor-pointer"
+                          >
+                            {d.is_available ? "Available" : "Unavailable"}
+                          </Badge>
+                        </button>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDelete(d)}
                         >
-                          {d.is_available ? "Available" : "Unavailable"}
-                        </Badge>
-                      </button>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-muted-foreground hover:text-destructive"
-                        onClick={() => handleDelete(d)}
-                      >
-                        Remove
-                      </Button>
+                          Remove
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {filteredDonors.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                      <div className="flex flex-col items-center gap-2">
+                        <Users className="h-6 w-6 opacity-40" />
+                        {donors.length === 0
+                          ? "No donors registered yet."
+                          : "No donors match your search."}
+                      </div>
                     </TableCell>
                   </TableRow>
-                );
-              })}
-              {filteredDonors.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
-                    {donors.length === 0
-                      ? "No donors registered yet."
-                      : "No donors match your search."}
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </Card>
-      )}
+                )}
+              </>
+            )}
+          </TableBody>
+        </Table>
+      </Card>
     </div>
   );
 }

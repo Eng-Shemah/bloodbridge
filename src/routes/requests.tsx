@@ -1,13 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { toast } from "sonner";
-import {
-  addRequest,
-  findMatchingDonors,
-  listRequests,
-  recordDonation,
-  setRequestStatus,
-} from "@/lib/dataStore";
+import { Inbox } from "lucide-react";
+import { useAddRequest, useRequests, useSetRequestStatus } from "@/hooks/useRequests";
+import { useRecordDonation } from "@/hooks/useStock";
+import { findMatchingDonors } from "@/lib/dataStore";
 import { isDonorEligible } from "@/lib/eligibility";
 import {
   BLOOD_TYPES,
@@ -22,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -54,21 +52,15 @@ const urgencyClass: Record<Urgency, string> = {
 const STATUS_FILTERS: (RequestStatus | "all")[] = ["all", "open", "fulfilled", "cancelled"];
 
 function Requests() {
-  const [requests, setRequests] = useState<BloodRequest[]>([]);
+  const { data: requests = [], isLoading: loading } = useRequests();
+  const addRequestMutation = useAddRequest();
+  const setStatusMutation = useSetRequestStatus();
+  const recordDonationMutation = useRecordDonation();
+
   const [form, setForm] = useState(emptyForm);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
   const [matches, setMatches] = useState<Record<string, MatchedDonor[]>>({});
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<RequestStatus | "all">("all");
-
-  function refresh() {
-    return listRequests().then(setRequests);
-  }
-
-  useEffect(() => {
-    refresh().finally(() => setLoading(false));
-  }, []);
 
   const filteredRequests = useMemo(
     () => (statusFilter === "all" ? requests : requests.filter((r) => r.status === statusFilter)),
@@ -78,14 +70,12 @@ function Requests() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!form.requester_name || !form.location) return;
-    setSubmitting(true);
     try {
-      await addRequest(form);
-      setForm(emptyForm);
-      await refresh();
+      await addRequestMutation.mutateAsync(form);
       toast.success("Request posted");
-    } finally {
-      setSubmitting(false);
+      setForm(emptyForm);
+    } catch {
+      toast.error("Couldn't post request — try again");
     }
   }
 
@@ -94,29 +84,33 @@ function Requests() {
     setMatches((prev) => ({ ...prev, [request.id]: found }));
   }
 
-  async function handleMarkFulfilled(id: string) {
-    await setRequestStatus(id, "fulfilled");
-    await refresh();
-    toast.success("Request marked fulfilled");
+  function handleMarkFulfilled(id: string) {
+    setStatusMutation.mutate(
+      { id, status: "fulfilled" },
+      { onSuccess: () => toast.success("Request marked fulfilled") },
+    );
   }
 
-  async function handleCancel(id: string) {
+  function handleCancel(id: string) {
     if (!confirm("Cancel this request?")) return;
-    await setRequestStatus(id, "cancelled");
-    await refresh();
-    toast("Request cancelled");
+    setStatusMutation.mutate(
+      { id, status: "cancelled" },
+      { onSuccess: () => toast("Request cancelled") },
+    );
   }
 
   async function handleConfirmDonation(request: BloodRequest, donor: MatchedDonor) {
     setConfirmingId(donor.id);
     try {
-      await recordDonation(donor, request.units_needed);
+      await recordDonationMutation.mutateAsync({ donor, units: request.units_needed });
       await handleFindMatches(request); // refresh so the donor's new eligibility shows
       toast.success(`Recorded ${donor.full_name}'s donation — added to ${donor.blood_type} stock`);
     } finally {
       setConfirmingId(null);
     }
   }
+
+  const submitting = addRequestMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -208,7 +202,16 @@ function Requests() {
       </Tabs>
 
       {loading ? (
-        <p className="text-muted-foreground">Loading requests…</p>
+        <div className="space-y-3">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="space-y-2 p-4">
+                <Skeleton className="h-5 w-2/3" />
+                <Skeleton className="h-4 w-1/3" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       ) : (
         <div className="space-y-3">
           {filteredRequests.map((r) => (
@@ -295,9 +298,10 @@ function Requests() {
             </Card>
           ))}
           {filteredRequests.length === 0 && (
-            <p className="text-muted-foreground">
+            <div className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
+              <Inbox className="h-6 w-6 opacity-40" />
               {requests.length === 0 ? "No requests posted yet." : `No ${statusFilter} requests.`}
-            </p>
+            </div>
           )}
         </div>
       )}
