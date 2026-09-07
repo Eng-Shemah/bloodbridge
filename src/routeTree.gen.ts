@@ -10,7 +10,9 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as DonorsRouteImport } from './routes/donors'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as RequestsRouteImport } from './routes/requests'
 import { Route as StockRouteImport } from './routes/stock'
 
@@ -19,9 +21,19 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DonorsRoute = DonorsRouteImport.update({
   id: '/donors',
   path: '/donors',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RequestsRoute = RequestsRouteImport.update({
@@ -37,34 +49,49 @@ const StockRoute = StockRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/dashboard': typeof DashboardRoute
   '/donors': typeof DonorsRoute
+  '/login': typeof LoginRoute
   '/requests': typeof RequestsRoute
   '/stock': typeof StockRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/dashboard': typeof DashboardRoute
   '/donors': typeof DonorsRoute
+  '/login': typeof LoginRoute
   '/requests': typeof RequestsRoute
   '/stock': typeof StockRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/dashboard': typeof DashboardRoute
   '/donors': typeof DonorsRoute
+  '/login': typeof LoginRoute
   '/requests': typeof RequestsRoute
   '/stock': typeof StockRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/donors' | '/requests' | '/stock'
+  fullPaths: '/' | '/dashboard' | '/donors' | '/login' | '/requests' | '/stock'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/donors' | '/requests' | '/stock'
-  id: '__root__' | '/' | '/donors' | '/requests' | '/stock'
+  to: '/' | '/dashboard' | '/donors' | '/login' | '/requests' | '/stock'
+  id:
+    | '__root__'
+    | '/'
+    | '/dashboard'
+    | '/donors'
+    | '/login'
+    | '/requests'
+    | '/stock'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DashboardRoute: typeof DashboardRoute
   DonorsRoute: typeof DonorsRoute
+  LoginRoute: typeof LoginRoute
   RequestsRoute: typeof RequestsRoute
   StockRoute: typeof StockRoute
 }
@@ -78,11 +105,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/donors': {
       id: '/donors'
       path: '/donors'
       fullPath: '/donors'
       preLoaderRoute: typeof DonorsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/requests': {
@@ -104,7 +145,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DashboardRoute: DashboardRoute,
   DonorsRoute: DonorsRoute,
+  LoginRoute: LoginRoute,
   RequestsRoute: RequestsRoute,
   StockRoute: StockRoute,
 }

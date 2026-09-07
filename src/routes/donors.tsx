@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { RequireAuth } from "@/components/RequireAuth";
 import {
   Select,
   SelectContent,
@@ -28,7 +29,11 @@ import {
 } from "@/components/ui/table";
 
 export const Route = createFileRoute("/donors")({
-  component: Donors,
+  component: () => (
+    <RequireAuth>
+      <Donors />
+    </RequireAuth>
+  ),
 });
 
 const emptyForm = {
@@ -96,7 +101,7 @@ function Donors() {
   const submitting = addDonorMutation.isPending;
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6 px-4 py-6">
       <h1 className="stagger-in font-heading text-xl font-bold">Donors</h1>
 
       <Card
